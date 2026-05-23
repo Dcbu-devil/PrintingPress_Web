@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
-import DashboardLayout from '../Components/Layout/Dashboardlayout';
-import { Plus, Search, Eye, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Search,
+  Eye,
+  X,
+  RefreshCw,
+  Plus,
+  ShoppingCart,
+} from 'lucide-react';
+
+import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import api from '../api/api';
 
 const Orders = () => {
@@ -13,153 +21,299 @@ const Orders = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchPageData = async () => {
+  // =========================
+  // FETCH JOBS / ORDERS
+  // =========================
+
+  const fetchOrders = async () => {
     try {
       setLoading(true);
 
-      const [ordersResponse, agentsResponse] = await Promise.all([
-        api.get('/orders/'),
-        api.get('/agents/'),
-      ]);
+      const response = await api.get('/orders/');
 
-      setOrders(ordersResponse.data);
-      setAgents(agentsResponse.data);
+      setOrders(response.data);
     } catch (error) {
-      console.error('Failed to fetch orders:', error);
-      alert('Failed to load orders. Please check FastAPI backend.');
+      console.error('Failed to fetch jobs:', error);
+      alert('Failed to load jobs. Please check backend.');
     } finally {
       setLoading(false);
     }
   };
 
+  // =========================
+  // FETCH MEMBERS / AGENTS
+  // =========================
+
+  const fetchAgents = async () => {
+    try {
+      const response = await api.get('/agents/');
+
+      setAgents(response.data);
+    } catch (error) {
+      console.error('Failed to fetch members:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchPageData();
+    fetchOrders();
+    fetchAgents();
   }, []);
 
+  // =========================
+  // GET MEMBER NAME
+  // =========================
+
   const getAgentName = (agentId) => {
-    if (!agentId) return 'No Agent';
+    if (!agentId) return 'N/A';
 
     const agent = agents.find((item) => item.id === Number(agentId));
 
     return agent ? agent.name : 'Unknown';
   };
 
-  const filteredOrders = orders.filter((order) => {
-    const search = searchTerm.toLowerCase();
-
-    return (
-      order.order_id?.toLowerCase().includes(search) ||
-      order.customer_name?.toLowerCase().includes(search) ||
-      order.product_name?.toLowerCase().includes(search) ||
-      getAgentName(order.direct_agent_id).toLowerCase().includes(search)
-    );
-  });
+  // =========================
+  // STATUS COLORS
+  // =========================
 
   const getStatusColor = (status) => {
     const colors = {
-      Pending: 'bg-yellow-100 text-yellow-800',
-      Processing: 'bg-blue-100 text-blue-800',
-      Completed: 'bg-green-100 text-green-800',
-      Cancelled: 'bg-red-100 text-red-800',
+      Pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      Running: 'bg-blue-100 text-blue-800 border-blue-300',
+      Completed: 'bg-green-100 text-green-800 border-green-300',
     };
 
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
-  const OrderDetailsModal = ({ order }) => {
+  // =========================
+  // UPDATE STATUS FROM DROPDOWN
+  // =========================
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    try {
+      const response = await api.put(`/orders/${orderId}/status`, {
+        status: newStatus,
+      });
+
+      setOrders((prevOrders) =>
+        prevOrders.map((order) =>
+          order.id === orderId ? response.data : order
+        )
+      );
+
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder(response.data);
+      }
+
+      alert('Job status updated successfully');
+    } catch (error) {
+      console.error('Status update error:', error);
+      alert(error.response?.data?.detail || 'Failed to update job status');
+    }
+  };
+
+  // =========================
+  // FILTER JOBS
+  // =========================
+
+  const filteredOrders = orders.filter((order) => {
+    const searchValue = searchTerm.toLowerCase();
+
+    return (
+      order.order_id?.toLowerCase().includes(searchValue) ||
+      order.customer_name?.toLowerCase().includes(searchValue) ||
+      order.product_name?.toLowerCase().includes(searchValue) ||
+      order.status?.toLowerCase().includes(searchValue)
+    );
+  });
+
+  // =========================
+  // JOB DETAILS MODAL
+  // =========================
+
+  const OrderDetailsModal = ({ order, onClose }) => {
     if (!order) return null;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-3xl w-full p-6 overflow-y-auto max-h-[90vh]">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Order Details
-            </h2>
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between border-b p-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Job Details
+              </h2>
+
+              <p className="text-gray-500 mt-1">
+                {order.order_id}
+              </p>
+            </div>
 
             <button
-              onClick={() => setSelectedOrder(null)}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg"
             >
-              ✕
+              <X size={22} />
             </button>
           </div>
 
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-500">Order ID</p>
-                <p className="font-semibold">{order.order_id}</p>
-              </div>
+          <div className="p-6 space-y-8">
+            {/* BASIC JOB DETAILS */}
+            <div>
+              <h3 className="text-lg font-bold mb-4">
+                Basic Information
+              </h3>
 
-              <div>
-                <p className="text-sm text-gray-500">Status</p>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                    order.status
-                  )}`}
-                >
-                  {order.status}
-                </span>
-              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Job ID</p>
+                  <p className="font-bold">{order.order_id}</p>
+                </div>
 
-              <div>
-                <p className="text-sm text-gray-500">Customer</p>
-                <p className="font-semibold">{order.customer_name}</p>
-              </div>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Customer</p>
+                  <p className="font-bold">{order.customer_name}</p>
+                </div>
 
-              <div>
-                <p className="text-sm text-gray-500">Product</p>
-                <p className="font-semibold">{order.product_name}</p>
-              </div>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Product</p>
+                  <p className="font-bold">{order.product_name}</p>
+                </div>
 
-              <div>
-                <p className="text-sm text-gray-500">Quantity</p>
-                <p className="font-semibold">{order.quantity}</p>
-              </div>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Status</p>
+                  <select
+                    value={order.status}
+                    onChange={(e) =>
+                      handleStatusChange(order.id, e.target.value)
+                    }
+                    className={`mt-1 px-3 py-2 rounded-lg text-sm font-semibold border outline-none cursor-pointer ${getStatusColor(
+                      order.status
+                    )}`}
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Running">Running</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </div>
 
-              <div>
-                <p className="text-sm text-gray-500">Unit Price</p>
-                <p className="font-semibold">₹{order.unit_price}</p>
-              </div>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Quantity</p>
+                  <p className="font-bold">{order.quantity}</p>
+                </div>
 
-              <div>
-                <p className="text-sm text-gray-500">Total Amount</p>
-                <p className="font-bold text-green-600">
-                  ₹{Number(order.total_amount || 0).toLocaleString()}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500">Printing Cost</p>
-                <p className="font-bold text-blue-600">
-                  ₹{Number(order.printing_cost || 0).toLocaleString()}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500">Created Date</p>
-                <p className="font-semibold">{order.created_date || 'N/A'}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500">Delivery Date</p>
-                <p className="font-semibold">{order.delivery_date || 'N/A'}</p>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Delivery Date</p>
+                  <p className="font-bold">{order.delivery_date || 'N/A'}</p>
+                </div>
               </div>
             </div>
 
-            <div className="border-t pt-5">
+            {/* REQUIREMENT COSTING TABLE */}
+            <div>
               <h3 className="text-lg font-bold mb-4">
-                Dynamic Commission Chain
+                Job Requirement Costing
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="w-full border border-gray-200 text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border p-3 text-left"></th>
+                      <th className="border p-3 text-left">Paper</th>
+                      <th className="border p-3 text-left">Plate</th>
+                      <th className="border p-3 text-left">Printing</th>
+                      <th className="border p-3 text-left">Lamination</th>
+                      <th className="border p-3 text-left">Binding</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    <tr>
+                      <td className="border p-3 font-semibold bg-gray-50">
+                        Type
+                      </td>
+
+                      <td className="border p-3">
+                        {order.paper_type || 'N/A'}
+                      </td>
+
+                      <td className="border p-3">
+                        {order.plate_type || 'N/A'}
+                      </td>
+
+                      <td className="border p-3">
+                        {order.printing_type || 'N/A'}
+                      </td>
+
+                      <td className="border p-3">
+                        {order.lamination_type || 'N/A'}
+                      </td>
+
+                      <td className="border p-3">
+                        {order.binding_type || 'N/A'}
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="border p-3 font-semibold bg-gray-50">
+                        Amount
+                      </td>
+
+                      <td className="border p-3">
+                        ₹{Number(order.paper_amount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="border p-3">
+                        ₹{Number(order.plate_amount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="border p-3">
+                        ₹{Number(order.printing_amount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="border p-3">
+                        ₹{Number(order.lamination_amount || 0).toLocaleString()}
+                      </td>
+
+                      <td className="border p-3">
+                        ₹{Number(order.binding_amount || 0).toLocaleString()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 flex justify-between items-center">
+                <span className="font-bold text-gray-700">
+                  Total Job Amount
+                </span>
+
+                <span className="text-2xl font-bold text-blue-600">
+                  ₹
+                  {Number(
+                    order.requirement_total_amount || order.total_amount || 0
+                  ).toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* MEMBER AND COMMISSION DETAILS */}
+            <div>
+              <h3 className="text-lg font-bold mb-4">
+                Member & Commission Details
               </h3>
 
               <div className="grid md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-600">Direct Agent</p>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Direct Member</p>
                   <p className="font-bold">
                     {getAgentName(order.direct_agent_id)}
                   </p>
-                  <p className="text-xl font-bold text-blue-600 mt-2">
+
+                  <p className="text-sm text-gray-500 mt-3">
+                    Final Commission
+                  </p>
+                  <p className="font-bold text-blue-600">
                     ₹
                     {Number(
                       order.final_direct_agent_commission || 0
@@ -167,51 +321,84 @@ const Orders = () => {
                   </p>
                 </div>
 
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-600">Parent Agent</p>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Parent Member</p>
                   <p className="font-bold">
                     {order.parent_agent_id
                       ? getAgentName(order.parent_agent_id)
                       : 'No Parent'}
                   </p>
-                  <p className="text-xl font-bold text-green-600 mt-2">
+
+                  <p className="text-sm text-gray-500 mt-3">
+                    Commission
+                  </p>
+                  <p className="font-bold text-green-600">
                     ₹{Number(order.parent_commission || 0).toLocaleString()}
                   </p>
                 </div>
 
-                <div className="bg-purple-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-600">Grandparent Agent</p>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Grandparent Member</p>
                   <p className="font-bold">
                     {order.grandparent_agent_id
                       ? getAgentName(order.grandparent_agent_id)
                       : 'No Grandparent'}
                   </p>
-                  <p className="text-xl font-bold text-purple-600 mt-2">
+
+                  <p className="text-sm text-gray-500 mt-3">
+                    Commission
+                  </p>
+                  <p className="font-bold text-purple-600">
                     ₹
-                    {Number(order.grandparent_commission || 0).toLocaleString()}
+                    {Number(
+                      order.grandparent_commission || 0
+                    ).toLocaleString()}
                   </p>
                 </div>
               </div>
+            </div>
 
-              <div className="mt-4 bg-gray-50 rounded-xl p-4">
-                <p>
-                  <strong>Total Direct 10% Commission:</strong> ₹
-                  {Number(order.direct_agent_commission || 0).toLocaleString()}
-                </p>
+            {/* AMOUNT SUMMARY */}
+            <div>
+              <h3 className="text-lg font-bold mb-4">
+                Amount Summary
+              </h3>
 
-                <p>
-                  <strong>Final Direct Agent Keep:</strong> ₹
-                  {Number(
-                    order.final_direct_agent_commission || 0
-                  ).toLocaleString()}
-                </p>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Total Amount</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    ₹{Number(order.total_amount || 0).toLocaleString()}
+                  </p>
+                </div>
 
-                <p className="text-sm text-gray-600 mt-2">
-                  Parent and grandparent commissions are deducted from the
-                  direct agent commission.
-                </p>
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Requirement Total</p>
+                  <p className="text-xl font-bold text-green-600">
+                    ₹
+                    {Number(
+                      order.requirement_total_amount || 0
+                    ).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="border rounded-xl p-4">
+                  <p className="text-sm text-gray-500">Printing Cost</p>
+                  <p className="text-xl font-bold text-orange-600">
+                    ₹{Number(order.printing_cost || 0).toLocaleString()}
+                  </p>
+                </div>
               </div>
             </div>
+          </div>
+
+          <div className="border-t p-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl"
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>
@@ -219,172 +406,198 @@ const Orders = () => {
   };
 
   return (
-    <DashboardLayout title="Orders">
+    <DashboardLayout title="Jobs">
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row justify-between gap-4">
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">
-              Orders Management
-            </h2>
+            <h1 className="text-4xl font-bold text-gray-900">
+              Jobs
+            </h1>
 
-            <p className="text-gray-600 mt-1">
-              Manage orders from FastAPI backend
+            <p className="text-gray-500 mt-1">
+              Manage all printing jobs, status, costing, and commission details.
             </p>
           </div>
 
           <div className="flex gap-3">
             <button
-              onClick={fetchPageData}
-              className="bg-gray-700 text-white px-5 py-3 rounded-xl hover:bg-gray-800 flex items-center gap-2"
+              onClick={fetchOrders}
+              className="flex items-center gap-2 border border-gray-300 px-4 py-3 rounded-xl hover:bg-gray-100"
             >
-              <RefreshCw className="w-5 h-5" />
+              <RefreshCw size={18} />
               Refresh
             </button>
 
             <button
               onClick={() => navigate('/add-order')}
-              className="bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 flex items-center gap-2"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl"
             >
-              <Plus className="w-5 h-5" />
-              New Order
+              <Plus size={18} />
+              Add Job
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Total Orders</p>
-            <h3 className="text-3xl font-bold mt-2">{orders.length}</h3>
-          </div>
-
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Total Revenue</p>
-            <h3 className="text-3xl font-bold text-green-600 mt-2">
-              ₹
-              {orders
-                .reduce((sum, order) => sum + Number(order.total_amount || 0), 0)
-                .toLocaleString()}
-            </h3>
-          </div>
-
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Pending Orders</p>
-            <h3 className="text-3xl font-bold text-yellow-600 mt-2">
-              {orders.filter((order) => order.status === 'Pending').length}
-            </h3>
-          </div>
-
-          <div className="bg-white rounded-xl p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Completed Orders</p>
-            <h3 className="text-3xl font-bold text-blue-600 mt-2">
-              {orders.filter((order) => order.status === 'Completed').length}
-            </h3>
-          </div>
-        </div>
-
-        {/* SEARCH BAR HIDDEN FROM FRONTEND VIEW */}
+        {/* SEARCH BAR */}
         <div className="hidden bg-white rounded-xl p-4 shadow-sm">
           <div className="relative">
-            <Search className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
 
             <input
               type="text"
-              placeholder="Search orders..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Search jobs..."
+              className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3"
             />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Order ID
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Customer
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Direct Agent
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Product
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Amount
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Status
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-gray-700">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
+        {/* TABLE */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="p-5 border-b flex items-center gap-3">
+            <div className="bg-blue-100 p-3 rounded-xl">
+              <ShoppingCart className="text-blue-600" size={24} />
+            </div>
 
-              <tbody>
-                {loading ? (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">
+                Job List
+              </h2>
+
+              <p className="text-gray-500 text-sm">
+                Total Jobs: {filteredOrders.length}
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="p-10 text-center text-gray-500">
+              Loading jobs...
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="p-10 text-center text-gray-500">
+              No jobs found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
                   <tr>
-                    <td colSpan="7" className="text-center py-8 text-gray-500">
-                      Loading orders...
-                    </td>
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Job ID
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Customer
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Product
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Member
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Total Amount
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Status
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Delivery Date
+                    </th>
+
+                    <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                      Action
+                    </th>
                   </tr>
-                ) : filteredOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-8 text-gray-500">
-                      No orders found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredOrders.map((order) => (
-                    <tr key={order.id} className="border-b hover:bg-gray-50">
-                      <td className="px-6 py-4 font-semibold">
+                </thead>
+
+                <tbody className="divide-y">
+                  {filteredOrders.map((order) => (
+                    <tr key={order.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-semibold text-gray-900">
                         {order.order_id}
                       </td>
 
-                      <td className="px-6 py-4">{order.customer_name}</td>
-
                       <td className="px-6 py-4">
-                        {getAgentName(order.direct_agent_id)}
-                      </td>
-
-                      <td className="px-6 py-4">{order.product_name}</td>
-
-                      <td className="px-6 py-4 font-semibold text-green-600">
-                        ₹{Number(order.total_amount || 0).toLocaleString()}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                            order.status
-                          )}`}
-                        >
-                          {order.status}
-                        </span>
+                        {order.customer_name}
                       </td>
 
                       <td className="px-6 py-4">
                         <button
                           onClick={() => setSelectedOrder(order)}
-                          className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"
+                          className="text-blue-600 font-semibold hover:underline"
                         >
-                          <Eye className="w-4 h-4" />
+                          {order.product_name}
+                        </button>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        {getAgentName(order.direct_agent_id)}
+                      </td>
+
+                      <td className="px-6 py-4 font-semibold">
+                        ₹
+                        {Number(
+                          order.requirement_total_amount ||
+                            order.total_amount ||
+                            0
+                        ).toLocaleString()}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <select
+                          value={order.status}
+                          onChange={(e) =>
+                            handleStatusChange(order.id, e.target.value)
+                          }
+                          className={`px-3 py-2 rounded-lg text-xs font-semibold border outline-none cursor-pointer ${getStatusColor(
+                            order.status
+                          )}`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Running">Running</option>
+                          <option value="Completed">Completed</option>
+                        </select>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        {order.delivery_date || 'N/A'}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold"
+                        >
+                          <Eye size={17} />
+                          View
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {selectedOrder && <OrderDetailsModal order={selectedOrder} />}
+        {selectedOrder && (
+          <OrderDetailsModal
+            order={selectedOrder}
+            onClose={() => setSelectedOrder(null)}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
