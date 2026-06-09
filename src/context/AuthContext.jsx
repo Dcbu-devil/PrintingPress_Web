@@ -1,209 +1,494 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api/api';
+
+/*
+  ============================================================
+  AUTH CONTEXT FILE
+  ============================================================
+
+  Purpose:
+  This file manages authentication globally in the frontend.
+
+  It stores:
+  1. Logged-in user data
+  2. JWT token
+  3. Authentication status
+  4. Login function
+  5. Logout function
+  6. User update function
+
+  Earlier:
+  Login was using mock frontend users.
+
+  Now:
+  Login calls real FastAPI backend:
+
+      POST /api/auth/login
+
+  Backend returns:
+
+      {
+        access_token: "jwt_token",
+        token_type: "bearer",
+        user: {
+          id: 1,
+          name: "Super Admin",
+          email: "super@admin.com",
+          role: "super_admin",
+          agent_id: null,
+          status: "Active"
+        }
+      }
+*/
 
 const AuthContext = createContext(null);
 
+/*
+  ============================================================
+  useAuth CUSTOM HOOK
+  ============================================================
+
+  Purpose:
+  This hook allows any component to access auth data.
+
+  Example usage:
+
+      const { user, login, logout, isAuthenticated } = useAuth();
+
+  Important:
+  useAuth must be used inside <AuthProvider>.
+*/
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+
   return context;
 };
 
+/*
+  ============================================================
+  AUTH PROVIDER COMPONENT
+  ============================================================
+
+  Purpose:
+  This component wraps your full app and provides auth data globally.
+
+  Usually used in app.jsx like:
+
+      <AuthProvider>
+        <Router>
+          ...
+        </Router>
+      </AuthProvider>
+*/
+
 export const AuthProvider = ({ children }) => {
+  /*
+    user:
+    Stores currently logged-in user.
+
+    Example:
+    {
+      id: 1,
+      name: "Super Admin",
+      email: "super@admin.com",
+      role: "super_admin",
+      agent_id: null,
+      status: "Active"
+    }
+  */
   const [user, setUser] = useState(null);
+
+  /*
+    isAuthenticated:
+    true  -> user is logged in
+    false -> user is not logged in
+  */
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  /*
+    loading:
+    Used while checking localStorage or during login/logout actions.
+  */
   const [loading, setLoading] = useState(true);
 
-  // API Base URL - Update this to your backend URL
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  /*
+    API_BASE_URL:
+    This is only kept for display/debug use.
 
-useEffect(() => {
-  const token = localStorage.getItem('token');
-  const userData = localStorage.getItem('user');
+    Real API calls are handled by:
+        ppweb/src/api/api.js
 
-  if (token && userData) {
-    try {
-      const parsedUser = JSON.parse(userData);
-      
-      if (parsedUser && parsedUser.id && parsedUser.role) {
-        setUser(parsedUser);
-        setIsAuthenticated(true);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      } else {
-        // ✅ FIX: Don't call logout, just clear storage directly
-        console.warn('Invalid user data in localStorage');
+    api.js already contains:
+        baseURL = http://127.0.0.1:8000/api
+  */
+  const API_BASE_URL =
+    import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+
+  /*
+    ============================================================
+    INITIAL AUTH CHECK
+    ============================================================
+
+    This runs once when app starts.
+
+    It checks localStorage:
+    - token
+    - user
+
+    If both exist:
+    - restore user state
+    - set isAuthenticated true
+
+    Why:
+    So user remains logged in after page refresh.
+  */
+
+  useEffect(() => {
+    const restoreAuth = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const userData = localStorage.getItem('user');
+
+        if (!token || !userData) {
+          setUser(null);
+          setIsAuthenticated(false);
+          return;
+        }
+
+        const parsedUser = JSON.parse(userData);
+
+        /*
+          Validate important user fields.
+
+          Required:
+          - id
+          - email
+          - role
+        */
+        if (!parsedUser?.id || !parsedUser?.email || !parsedUser?.role) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+
+          setUser(null);
+          setIsAuthenticated(false);
+          return;
+        }
+
+        /*
+          Optional backend verification:
+          We call /auth/me to confirm token is still valid.
+
+          If token is valid:
+          backend returns current user.
+
+          If token expired/invalid:
+          api.js response interceptor removes token/user.
+        */
+        try {
+          const response = await api.get('/auth/me');
+
+          setUser(response.data);
+          setIsAuthenticated(true);
+
+          localStorage.setItem('user', JSON.stringify(response.data));
+        } catch (error) {
+          console.error('Token verification failed:', error);
+
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error('Auth restore error:', error);
+
         localStorage.removeItem('token');
         localStorage.removeItem('user');
-        delete axios.defaults.headers.common['Authorization'];
+
+        setUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error parsing user data:', error);
-      // ✅ FIX: Clear storage directly instead of calling logout
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      delete axios.defaults.headers.common['Authorization'];
-    }
-  }
-  setLoading(false);
-}, []);
+    };
+
+    restoreAuth();
+  }, []);
+
+  /*
+    ============================================================
+    LOGIN FUNCTION
+    ============================================================
+
+    Purpose:
+    Calls backend login API.
+
+    Backend route:
+        POST /api/auth/login
+
+    Request body:
+        {
+          email: "super@admin.com",
+          password: "admin123"
+        }
+
+    Success response:
+        {
+          access_token: "...",
+          token_type: "bearer",
+          user: {...}
+        }
+
+    Then we store:
+    - token in localStorage
+    - user in localStorage
+    - user in React state
+  */
 
   const login = async (email, password) => {
     try {
-      setLoading(true); // ✅ ADD: Set loading during login
-      
-      // Replace with actual API call
-      // const response = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
-      
-      // Mock login for demonstration
-      const mockUsers = [
-        { id: 1, name: 'Super Admin', email: 'super@admin.com', role: 'super_admin', password: 'admin123' },
-        { id: 2, name: 'Admin User', email: 'admin@company.com', role: 'admin', password: 'admin123' },
-        { id: 3, name: 'Agent User', email: 'agent@company.com', role: 'agent', password: 'agent123' },
-      ];
+      setLoading(true);
 
-      // ✅ ADD: Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const foundUser = mockUsers.find(u => u.email === email && u.password === password);
-      
-      if (!foundUser) {
-        throw new Error('Invalid credentials');
+      if (!email || !password) {
+        throw new Error('Email and password are required');
       }
 
-      // ✅ ADD: Validate user object
-      if (!foundUser.id || !foundUser.role || !foundUser.email) {
-        throw new Error('Invalid user data received');
+      const response = await api.post('/auth/login', {
+        email,
+        password,
+      });
+
+      const accessToken = response.data?.access_token;
+      const loggedInUser = response.data?.user;
+
+      if (!accessToken) {
+        throw new Error('Access token missing from backend response');
       }
 
-      const { password: _, ...userWithoutPassword } = foundUser;
-      const mockToken = 'mock-jwt-token-' + Date.now();
+      if (
+        !loggedInUser ||
+        !loggedInUser.id ||
+        !loggedInUser.email ||
+        !loggedInUser.role
+      ) {
+        throw new Error('Invalid user data received from backend');
+      }
 
-      // Store in localStorage
-      localStorage.setItem('token', mockToken);
-      localStorage.setItem('user', JSON.stringify(userWithoutPassword));
+      /*
+        Store JWT token.
 
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
+        api.js interceptor will automatically add this token
+        to every future API request:
 
-      setUser(userWithoutPassword);
+            Authorization: Bearer token
+      */
+      localStorage.setItem('token', accessToken);
+
+      /*
+        Store user data for page refresh restore.
+      */
+      localStorage.setItem('user', JSON.stringify(loggedInUser));
+
+      /*
+        Update React state.
+      */
+      setUser(loggedInUser);
       setIsAuthenticated(true);
 
-      return { success: true, user: userWithoutPassword };
+      return {
+        success: true,
+        user: loggedInUser,
+      };
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: error.message || 'Login failed' };
-    } finally {
-      setLoading(false); // ✅ ADD: Reset loading state
-    }
-  };
 
-  const register = async (userData) => {
-    try {
-      setLoading(true); // ✅ ADD: Set loading during registration
-      
-      // ✅ ADD: Validate input data
-      if (!userData.email || !userData.password || !userData.name) {
-        throw new Error('Missing required fields');
-      }
+      /*
+        Clear old invalid login data.
+      */
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
 
-      // Replace with actual API call
-      // const response = await axios.post(`${API_BASE_URL}/auth/register`, userData);
-      
-      // ✅ ADD: Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
+      setUser(null);
+      setIsAuthenticated(false);
 
-      // Mock registration
-      const newUser = {
-        id: Date.now(),
-        name: userData.name,
-        email: userData.email,
-        role: userData.role || 'agent', // Default role for new registrations
+      return {
+        success: false,
+        error:
+          error.response?.data?.detail ||
+          error.message ||
+          'Login failed',
       };
-
-      const mockToken = 'mock-jwt-token-' + Date.now();
-
-      localStorage.setItem('token', mockToken);
-      localStorage.setItem('user', JSON.stringify(newUser));
-
-      axios.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
-
-      setUser(newUser);
-      setIsAuthenticated(true);
-
-      return { success: true, user: newUser };
-    } catch (error) {
-      console.error('Registration error:', error);
-      return { success: false, error: error.message || 'Registration failed' };
     } finally {
-      setLoading(false); // ✅ ADD: Reset loading state
+      setLoading(false);
     }
   };
+
+  /*
+    ============================================================
+    REGISTER FUNCTION
+    ============================================================
+
+    Current status:
+    Backend register API is not created yet.
+
+    For business safety:
+    Do not allow public registration.
+
+    Later:
+    Only Super Admin should create Admin/Agent users.
+  */
+
+  const register = async () => {
+    return {
+      success: false,
+      error:
+        'Registration is disabled. Super Admin will create users from backend/admin panel later.',
+    };
+  };
+
+  /*
+    ============================================================
+    LOGOUT FUNCTION
+    ============================================================
+
+    Purpose:
+    Logs out current user.
+
+    It removes:
+    - token from localStorage
+    - user from localStorage
+    - user from React state
+  */
 
   const logout = () => {
     try {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      delete axios.defaults.headers.common['Authorization'];
+
       setUser(null);
       setIsAuthenticated(false);
     } catch (error) {
       console.error('Logout error:', error);
-      // Force logout even if there's an error
+
       setUser(null);
       setIsAuthenticated(false);
     }
   };
 
+  /*
+    ============================================================
+    UPDATE USER FUNCTION
+    ============================================================
+
+    Purpose:
+    Updates frontend user state.
+
+    Example:
+        updateUser({ name: "Updated Name" })
+
+    It also updates localStorage user.
+  */
+
   const updateUser = (updatedData) => {
     try {
-      // ✅ ADD: Validate that user exists before updating
       if (!user) {
-        console.error('Cannot update user: No user logged in');
-        return { success: false, error: 'No user logged in' };
+        return {
+          success: false,
+          error: 'No user logged in',
+        };
       }
 
-      const updatedUser = { ...user, ...updatedData };
-      
-      // ✅ ADD: Ensure critical fields are not removed
-      if (!updatedUser.id || !updatedUser.role || !updatedUser.email) {
-        console.error('Cannot update user: Missing critical fields');
-        return { success: false, error: 'Invalid user data' };
+      const updatedUser = {
+        ...user,
+        ...updatedData,
+      };
+
+      if (!updatedUser.id || !updatedUser.email || !updatedUser.role) {
+        return {
+          success: false,
+          error: 'Invalid user data',
+        };
       }
 
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      return { success: true, user: updatedUser };
+
+      return {
+        success: true,
+        user: updatedUser,
+      };
     } catch (error) {
       console.error('Update user error:', error);
-      return { success: false, error: error.message };
+
+      return {
+        success: false,
+        error: error.message || 'Failed to update user',
+      };
     }
   };
 
-  // ✅ ADD: Token refresh function (for when you connect to real API)
+  /*
+    ============================================================
+    REFRESH TOKEN FUNCTION
+    ============================================================
+
+    Current status:
+    Refresh token API is not created yet.
+
+    For now:
+    It checks the current token by calling:
+
+        GET /api/auth/me
+
+    If valid:
+    returns true
+
+    If invalid:
+    logout user and return false
+  */
+
   const refreshToken = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return false;
 
-      // Uncomment when connecting to real API
-      // const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { token });
-      // const { token: newToken, user: userData } = response.data;
-      // localStorage.setItem('token', newToken);
-      // localStorage.setItem('user', JSON.stringify(userData));
-      // axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      // setUser(userData);
-      // setIsAuthenticated(true);
-      
+      if (!token) {
+        logout();
+        return false;
+      }
+
+      const response = await api.get('/auth/me');
+
+      setUser(response.data);
+      setIsAuthenticated(true);
+
+      localStorage.setItem('user', JSON.stringify(response.data));
+
       return true;
     } catch (error) {
-      console.error('Token refresh error:', error);
+      console.error('Token refresh/check error:', error);
+
       logout();
+
       return false;
     }
   };
+
+  /*
+    ============================================================
+    CONTEXT VALUE
+    ============================================================
+
+    These values and functions are available in all components.
+
+    Example:
+        const { user, login, logout } = useAuth();
+  */
 
   const value = {
     user,
@@ -213,18 +498,15 @@ useEffect(() => {
     register,
     logout,
     updateUser,
-    refreshToken, // ✅ ADD: Export refresh function
+    refreshToken,
     API_BASE_URL,
   };
 
-  // ✅ ADD: Don't render children until loading is complete (optional)
-  // if (loading) {
-  //   return (
-  //     <div className="min-h-screen flex items-center justify-center">
-  //       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-  //     </div>
-  //   );
-  // }
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
+
+export default AuthContext;
