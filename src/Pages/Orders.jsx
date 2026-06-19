@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Eye,
@@ -7,18 +7,22 @@ import {
   RefreshCw,
   Plus,
   ShoppingCart,
+  Trash2,
 } from 'lucide-react';
 
 import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import api from '../api/api';
+import { useAuth } from '../context/AuthContext';
 
 const Orders = () => {
   const navigate = useNavigate();
-
+  const location = useLocation();
+  const { user } = useAuth();
+  const isAgent = user?.role === 'agent';
   const [orders, setOrders] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [costingOrder, setCostingOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // =========================
@@ -54,10 +58,28 @@ const Orders = () => {
     }
   };
 
-  useEffect(() => {
+ useEffect(() => {
     fetchOrders();
-    fetchAgents();
+
+    if (user?.role !== 'agent') {
+      fetchAgents();
+    }
   }, []);
+
+  useEffect(() => {
+    if (orders.length > 0) {
+      const queryParams = new URLSearchParams(location.search);
+      const openCostingId = queryParams.get('openCosting');
+      if (openCostingId) {
+        const foundOrder = orders.find((o) => o.id === Number(openCostingId));
+        if (foundOrder) {
+          setCostingOrder(foundOrder);
+          // Remove query param from URL without page reload
+          navigate('/orders', { replace: true });
+        }
+      }
+    }
+  }, [orders, location.search, navigate]);
 
   // =========================
   // GET MEMBER NAME
@@ -113,26 +135,64 @@ const Orders = () => {
   };
 
   // =========================
-  // FILTER JOBS
+  // DELETE JOB / ORDER
   // =========================
 
-  const filteredOrders = orders.filter((order) => {
-    const searchValue = searchTerm.toLowerCase();
-
-    return (
-      order.order_id?.toLowerCase().includes(searchValue) ||
-      order.customer_name?.toLowerCase().includes(searchValue) ||
-      order.product_name?.toLowerCase().includes(searchValue) ||
-      order.status?.toLowerCase().includes(searchValue)
+  const handleDeleteOrder = async (order) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete job "${order.order_id}"? This will also delete all associated commission payments and revert member totals.`
     );
-  });
+    if (!confirmDelete) return;
+
+    try {
+      await api.delete(`/orders/${order.id}`);
+      alert('Job deleted successfully');
+      fetchOrders();
+    } catch (error) {
+      console.error('Failed to delete job:', error);
+      alert(error.response?.data?.detail || 'Failed to delete job');
+    }
+  };
+
+  // =========================
+  // FILTER JOBS (Search removed)
+  // =========================
+
+  const filteredOrders = orders;
 
   // =========================
   // JOB DETAILS MODAL
   // =========================
 
   const OrderDetailsModal = ({ order, onClose }) => {
+    const [isEditingQuantity, setIsEditingQuantity] = useState(false);
+    const [newQuantity, setNewQuantity] = useState(order.quantity);
+    const [updatingQuantity, setUpdatingQuantity] = useState(false);
+
     if (!order) return null;
+
+    const handleSaveQuantity = async () => {
+      const q = Number(newQuantity);
+      if (isNaN(q) || q <= 0) {
+        alert('Quantity must be a valid number greater than 0');
+        return;
+      }
+      try {
+        setUpdatingQuantity(true);
+        const response = await api.put(`/orders/${order.id}/quantity`, {
+          quantity: q
+        });
+        alert('Quantity updated successfully');
+        setIsEditingQuantity(false);
+        setSelectedOrder(response.data);
+        fetchOrders();
+      } catch (err) {
+        console.error('Failed to update quantity:', err);
+        alert(err.response?.data?.detail || 'Failed to update quantity');
+      } finally {
+        setUpdatingQuantity(false);
+      }
+    };
 
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -181,6 +241,13 @@ const Orders = () => {
 
                 <div className="border rounded-xl p-4">
                   <p className="text-sm text-gray-500">Status</p>
+                  {isAgent ? (
+                    <span
+                      className={`inline-block mt-1 px-3 py-2 rounded-lg text-sm font-semibold border ${getStatusColor(order.status)}`}
+                    >
+                      {order.status}
+                    </span>
+                  ) : (
                   <select
                     value={order.status}
                     onChange={(e) =>
@@ -194,11 +261,58 @@ const Orders = () => {
                     <option value="Running">Running</option>
                     <option value="Completed">Completed</option>
                   </select>
+                  )}
                 </div>
 
-                <div className="border rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Quantity</p>
-                  <p className="font-bold">{order.quantity}</p>
+                <div className="border rounded-xl p-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-gray-500">Quantity</p>
+                    {isEditingQuantity ? (
+                      <input
+                        type="number"
+                        min="1"
+                        value={newQuantity}
+                        onChange={(e) => setNewQuantity(e.target.value)}
+                        className="font-bold border rounded px-2 py-1 w-28 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        disabled={updatingQuantity}
+                      />
+                    ) : (
+                      <p className="font-bold">{order.quantity}</p>
+                    )}
+                  </div>
+
+                  {user?.role === 'super_admin' && (
+                    <div>
+                      {isEditingQuantity ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveQuantity}
+                            disabled={updatingQuantity}
+                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
+                          >
+                            {updatingQuantity ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => setIsEditingQuantity(false)}
+                            disabled={updatingQuantity}
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setNewQuantity(order.quantity);
+                            setIsEditingQuantity(true);
+                          }}
+                          className="bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border rounded-xl p-4">
@@ -288,12 +402,26 @@ const Orders = () => {
                   Total Job Amount
                 </span>
 
-                <span className="text-2xl font-bold text-blue-600">
-                  ₹
-                  {Number(
-                    order.requirement_total_amount || order.total_amount || 0
-                  ).toLocaleString()}
-                </span>
+                <div className="flex items-center gap-4">
+                  {!isAgent && (
+                    <button
+                      onClick={() => {
+                        setCostingOrder(order);
+                        onClose();
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                    >
+                      {Number(order.requirement_total_amount || 0) === 0 ? "Enter Costing" : "Edit Costing"}
+                    </button>
+                  )}
+
+                  <span className="text-2xl font-bold text-blue-600">
+                    ₹
+                    {Number(
+                      order.requirement_total_amount || order.total_amount || 0
+                    ).toLocaleString()}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -405,6 +533,157 @@ const Orders = () => {
     );
   };
 
+  const CostingModal = ({ order, onClose, onSuccess }) => {
+    const [paperAmount, setPaperAmount] = useState(order.paper_amount || 0);
+    const [plateAmount, setPlateAmount] = useState(order.plate_amount || 0);
+    const [printingAmount, setPrintingAmount] = useState(order.printing_amount || 0);
+    const [laminationAmount, setLaminationAmount] = useState(order.lamination_amount || 0);
+    const [bindingAmount, setBindingAmount] = useState(order.binding_amount || 0);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+      e.preventDefault();
+      try {
+        setSubmitting(true);
+        setError('');
+        await api.put(`/orders/${order.id}/costing`, {
+          paper_amount: Number(paperAmount),
+          plate_amount: Number(plateAmount),
+          printing_amount: Number(printingAmount),
+          lamination_amount: Number(laminationAmount),
+          binding_amount: Number(bindingAmount),
+        });
+        alert('Costing updated successfully');
+        onSuccess();
+      } catch (err) {
+        console.error('Failed to update costing:', err);
+        setError(err.response?.data?.detail || 'Failed to update costing. Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between border-b p-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Enter Requirement Costing</h2>
+              <p className="text-gray-500 text-sm mt-1">Job ID: {order.order_id}</p>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {error && (
+              <div className="bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Paper Cost (₹) <span className="text-xs font-normal text-gray-500">({order.paper_type || 'N/A'})</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={paperAmount}
+                  onChange={(e) => setPaperAmount(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Plate Cost (₹) <span className="text-xs font-normal text-gray-500">({order.plate_type || 'N/A'})</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={plateAmount}
+                  onChange={(e) => setPlateAmount(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Printing Cost (₹) <span className="text-xs font-normal text-gray-500">({order.printing_type || 'N/A'})</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={printingAmount}
+                  onChange={(e) => setPrintingAmount(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Lamination Cost (₹) <span className="text-xs font-normal text-gray-500">({order.lamination_type || 'N/A'})</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={laminationAmount}
+                  onChange={(e) => setLaminationAmount(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Binding Cost (₹) <span className="text-xs font-normal text-gray-500">({order.binding_type || 'N/A'})</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  value={bindingAmount}
+                  onChange={(e) => setBindingAmount(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="border-t pt-4 mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="px-5 py-3 border border-gray-300 text-gray-700 hover:bg-gray-100 rounded-xl font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50 transition"
+              >
+                {submitting ? 'Updating...' : 'Submit Costing'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <DashboardLayout title="Jobs">
       <div className="space-y-6">
@@ -439,23 +718,7 @@ const Orders = () => {
           </div>
         </div>
 
-        {/* SEARCH BAR */}
-        <div className="hidden bg-white rounded-xl p-4 shadow-sm">
-          <div className="relative">
-            <Search
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
 
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search jobs..."
-              className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3"
-            />
-          </div>
-        </div>
 
         {/* TABLE */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -519,6 +782,11 @@ const Orders = () => {
                     <th className="px-6 py-4 text-left font-semibold text-gray-600">
                       Action
                     </th>
+                    {!isAgent && (
+                      <th className="px-6 py-4 text-left font-semibold text-gray-600">
+                        Delete
+                      </th>
+                    )}
                   </tr>
                 </thead>
 
@@ -556,6 +824,13 @@ const Orders = () => {
                       </td>
 
                       <td className="px-6 py-4">
+                        {isAgent ? (
+                          <span
+                            className={`px-3 py-2 rounded-lg text-xs font-semibold border ${getStatusColor(order.status)}`}
+                          >
+                            {order.status}
+                          </span>
+                        ) : (
                         <select
                           value={order.status}
                           onChange={(e) =>
@@ -569,6 +844,7 @@ const Orders = () => {
                           <option value="Running">Running</option>
                           <option value="Completed">Completed</option>
                         </select>
+                        )}
                       </td>
 
                       <td className="px-6 py-4">
@@ -584,6 +860,18 @@ const Orders = () => {
                           View
                         </button>
                       </td>
+
+                      {!isAgent && (
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleDeleteOrder(order)}
+                            className="flex items-center gap-2 text-red-600 hover:text-red-800 font-semibold cursor-pointer"
+                          >
+                            <Trash2 size={17} />
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -596,6 +884,17 @@ const Orders = () => {
           <OrderDetailsModal
             order={selectedOrder}
             onClose={() => setSelectedOrder(null)}
+          />
+        )}
+
+        {costingOrder && (
+          <CostingModal
+            order={costingOrder}
+            onClose={() => setCostingOrder(null)}
+            onSuccess={() => {
+              setCostingOrder(null);
+              fetchOrders();
+            }}
           />
         )}
       </div>

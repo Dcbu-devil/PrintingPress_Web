@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import api from '../api/api';
+import { useAuth } from '../context/AuthContext';
 
 const AddOrder = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAgent = user?.role === 'agent';
 
   const [agents, setAgents] = useState([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -31,21 +34,32 @@ const AddOrder = () => {
   });
 
   useEffect(() => {
-    const fetchAgents = async () => {
-      try {
-        setLoadingAgents(true);
-        const response = await api.get('/agents/');
-        setAgents(response.data);
-      } catch (error) {
-        console.error('Failed to fetch agents:', error);
-        alert('Failed to load agents. Please check FastAPI backend.');
-      } finally {
-        setLoadingAgents(false);
+    if (isAgent) {
+      if (user) {
+        setAgents([{ id: user.agent_id, name: user.name }]);
+        setFormData((prev) => ({
+          ...prev,
+          directAgentId: String(user.agent_id),
+        }));
       }
-    };
+      setLoadingAgents(false);
+    } else {
+      const fetchAgents = async () => {
+        try {
+          setLoadingAgents(true);
+          const response = await api.get('/agents/');
+          setAgents(response.data);
+        } catch (error) {
+          console.error('Failed to fetch agents:', error);
+          alert('Failed to load agents. Please check FastAPI backend.');
+        } finally {
+          setLoadingAgents(false);
+        }
+      };
 
-    fetchAgents();
-  }, []);
+      fetchAgents();
+    }
+  }, [isAgent, user]);
 
   const getAgentName = (agentId) => {
     if (!agentId) return 'No Agent';
@@ -84,7 +98,7 @@ const AddOrder = () => {
       return;
     }
 
-    if (requirementTotalAmount <= 0) {
+    if (!isAgent && requirementTotalAmount <= 0) {
       alert('Please enter at least one requirement amount');
       return;
     }
@@ -99,28 +113,28 @@ const AddOrder = () => {
       product_name: formData.productName,
       quantity: Number(formData.quantity),
 
-      unit_price: Number(calculatedUnitPrice.toFixed(2)),
-      total_amount: Number(requirementTotalAmount.toFixed(2)),
-      requirement_total_amount: Number(requirementTotalAmount.toFixed(2)),
+      unit_price: isAgent ? 0 : Number(calculatedUnitPrice.toFixed(2)),
+      total_amount: isAgent ? 0 : Number(requirementTotalAmount.toFixed(2)),
+      requirement_total_amount: isAgent ? 0 : Number(requirementTotalAmount.toFixed(2)),
 
-      printing_cost: Number(calculatedPrintingCost.toFixed(2)),
+      printing_cost: isAgent ? 0 : Number(calculatedPrintingCost.toFixed(2)),
       direct_agent_id: Number(formData.directAgentId),
       delivery_date: formData.deliveryDate,
 
       paper_type: formData.paperType,
-      paper_amount: Number(formData.paperAmount || 0),
+      paper_amount: isAgent ? 0 : Number(formData.paperAmount || 0),
 
       plate_type: formData.plateType,
-      plate_amount: Number(formData.plateAmount || 0),
+      plate_amount: isAgent ? 0 : Number(formData.plateAmount || 0),
 
       printing_type: formData.printingType,
-      printing_amount: Number(formData.printingAmount || 0),
+      printing_amount: isAgent ? 0 : Number(formData.printingAmount || 0),
 
       lamination_type: formData.laminationType,
-      lamination_amount: Number(formData.laminationAmount || 0),
+      lamination_amount: isAgent ? 0 : Number(formData.laminationAmount || 0),
 
       binding_type: formData.bindingType,
-      binding_amount: Number(formData.bindingAmount || 0),
+      binding_amount: isAgent ? 0 : Number(formData.bindingAmount || 0),
     };
 
     try {
@@ -128,9 +142,13 @@ const AddOrder = () => {
 
       const response = await api.post('/orders/', payload);
 
-      setCreatedOrder(response.data);
-
-      alert('Job created successfully');
+      if (isAgent) {
+        alert('Job created and costing request sent to administrator successfully.');
+        navigate('/orders');
+      } else {
+        setCreatedOrder(response.data);
+        alert('Job created successfully');
+      }
     } catch (error) {
       console.error('Create Job error:', error);
       alert(error.response?.data?.detail || 'Failed to create job');
@@ -190,8 +208,8 @@ const AddOrder = () => {
                       directAgentId: e.target.value,
                     })
                   }
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                  disabled={loadingAgents}
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white disabled:bg-gray-100"
+                  disabled={loadingAgents || isAgent}
                 >
                   <option value="">
                     {loadingAgents ? 'Loading agents...' : 'Select Agent'}
@@ -258,7 +276,7 @@ const AddOrder = () => {
                     <tr>
                       <th className="border p-3 text-left">Requirement</th>
                       <th className="border p-3 text-left">Type</th>
-                      <th className="border p-3 text-left">Amount</th>
+                      {!isAgent && <th className="border p-3 text-left">Amount</th>}
                     </tr>
                   </thead>
 
@@ -279,22 +297,24 @@ const AddOrder = () => {
                           placeholder="Example: Art Paper 300 GSM"
                         />
                       </td>
-                      <td className="border p-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.paperAmount}
-                          onChange={(e) =>
-                            handleRequirementChange(
-                              'paperAmount',
-                              e.target.value
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                          placeholder="500"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="border p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.paperAmount}
+                            onChange={(e) =>
+                              handleRequirementChange(
+                                'paperAmount',
+                                e.target.value
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2"
+                            placeholder="500"
+                          />
+                        </td>
+                      )}
                     </tr>
 
                     <tr>
@@ -313,22 +333,24 @@ const AddOrder = () => {
                           placeholder="Example: CTP Plate"
                         />
                       </td>
-                      <td className="border p-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.plateAmount}
-                          onChange={(e) =>
-                            handleRequirementChange(
-                              'plateAmount',
-                              e.target.value
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                          placeholder="300"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="border p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.plateAmount}
+                            onChange={(e) =>
+                              handleRequirementChange(
+                                'plateAmount',
+                                e.target.value
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2"
+                            placeholder="300"
+                          />
+                        </td>
+                      )}
                     </tr>
 
                     <tr>
@@ -347,22 +369,24 @@ const AddOrder = () => {
                           placeholder="Example: 4 Color Offset"
                         />
                       </td>
-                      <td className="border p-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.printingAmount}
-                          onChange={(e) =>
-                            handleRequirementChange(
-                              'printingAmount',
-                              e.target.value
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                          placeholder="1500"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="border p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.printingAmount}
+                            onChange={(e) =>
+                              handleRequirementChange(
+                                'printingAmount',
+                                e.target.value
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2"
+                            placeholder="1500"
+                          />
+                        </td>
+                      )}
                     </tr>
 
                     <tr>
@@ -381,22 +405,24 @@ const AddOrder = () => {
                           placeholder="Example: Gloss Lamination"
                         />
                       </td>
-                      <td className="border p-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.laminationAmount}
-                          onChange={(e) =>
-                            handleRequirementChange(
-                              'laminationAmount',
-                              e.target.value
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                          placeholder="400"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="border p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.laminationAmount}
+                            onChange={(e) =>
+                              handleRequirementChange(
+                                'laminationAmount',
+                                e.target.value
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2"
+                            placeholder="400"
+                          />
+                        </td>
+                      )}
                     </tr>
 
                     <tr>
@@ -415,36 +441,46 @@ const AddOrder = () => {
                           placeholder="Example: Perfect Binding"
                         />
                       </td>
-                      <td className="border p-3">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={formData.bindingAmount}
-                          onChange={(e) =>
-                            handleRequirementChange(
-                              'bindingAmount',
-                              e.target.value
-                            )
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                          placeholder="300"
-                        />
-                      </td>
+                      {!isAgent && (
+                        <td className="border p-3">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.bindingAmount}
+                            onChange={(e) =>
+                              handleRequirementChange(
+                                'bindingAmount',
+                                e.target.value
+                              )
+                            }
+                            className="w-full border rounded-lg px-3 py-2"
+                            placeholder="300"
+                          />
+                        </td>
+                      )}
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 flex justify-between">
-                <span className="font-bold text-gray-700">
-                  Total job Amount
-                </span>
+              {isAgent ? (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
+                  <span className="font-semibold text-yellow-800 text-sm">
+                    Costing and total amounts will be populated by the administrator after submission.
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 flex justify-between">
+                  <span className="font-bold text-gray-700">
+                    Total job Amount
+                  </span>
 
-                <span className="text-2xl font-bold text-blue-600">
-                  ₹{requirementTotalAmount.toLocaleString()}
-                </span>
-              </div>
+                  <span className="text-2xl font-bold text-blue-600">
+                    ₹{requirementTotalAmount.toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
@@ -469,31 +505,35 @@ const AddOrder = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Unit Price Auto
-                </label>
+              {!isAgent && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Unit Price Auto
+                    </label>
 
-                <input
-                  type="text"
-                  readOnly
-                  value={`₹${calculatedUnitPrice.toFixed(2)}`}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`₹${calculatedUnitPrice.toFixed(2)}`}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100 cursor-not-allowed"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Printing Cost Auto
-                </label>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Printing Cost Auto
+                    </label>
 
-                <input
-                  type="text"
-                  readOnly
-                  value={`₹${calculatedPrintingCost.toLocaleString()}`}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100 cursor-not-allowed"
-                />
-              </div>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`₹${calculatedPrintingCost.toLocaleString()}`}
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100 cursor-not-allowed"
+                    />
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex justify-end gap-4 pt-4">
@@ -510,7 +550,7 @@ const AddOrder = () => {
                 disabled={submitting}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl disabled:opacity-60"
               >
-                {submitting ? 'Creating...' : 'Create Order'}
+                {submitting ? 'Creating...' : (isAgent ? 'Create Job & Request Costing' : 'Create Order')}
               </button>
             </div>
           </form>

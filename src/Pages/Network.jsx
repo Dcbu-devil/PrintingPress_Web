@@ -16,18 +16,18 @@ import api from '../api/api';
 const getNodeType = (node, level) => {
   if (node.type === 'company') return 'company';
 
-  if (level === 1) return 'direct_member';
+  if (level === 1) return 'agent';
 
-  return 'connected_member';
+  return 'sub_agent';
 };
 
 const getRoleLabel = (node, level) => {
   const type = getNodeType(node, level);
 
   if (type === 'company') return 'Company';
-  if (type === 'direct_member') return 'Direct Member';
+  if (type === 'agent') return 'Agent';
 
-  return 'Connected Member';
+  return 'Sub Agent';
 };
 
 const getGlowClass = (node, level) => {
@@ -37,11 +37,11 @@ const getGlowClass = (node, level) => {
     return 'shadow-[0_0_35px_#2563eb]';
   }
 
-  if (type === 'direct_member') {
+  if (type === 'agent') {
     return 'shadow-[0_0_30px_#22c55e]';
   }
 
-  return 'shadow-[0_0_30px_#ef4444]';
+  return 'shadow-[0_0_30px_#a855f7]';
 };
 
 const getPulseClass = (node, level) => {
@@ -51,11 +51,11 @@ const getPulseClass = (node, level) => {
     return 'bg-blue-500';
   }
 
-  if (type === 'direct_member') {
+  if (type === 'agent') {
     return 'bg-green-500';
   }
 
-  return 'bg-red-500';
+  return 'bg-purple-500';
 };
 
 const getTextClass = (node, level) => {
@@ -65,11 +65,11 @@ const getTextClass = (node, level) => {
     return 'text-blue-600';
   }
 
-  if (type === 'direct_member') {
+  if (type === 'agent') {
     return 'text-green-600';
   }
 
-  return 'text-red-500';
+  return 'text-purple-600';
 };
 
 const getImageUrl = (node) => {
@@ -594,7 +594,7 @@ const Network = () => {
             </h1>
 
             <p className="text-gray-500 mt-2">
-              Company → Direct Members → Connected Members
+              Company &rarr; Agent &rarr; Sub Agent
             </p>
 
             <div className="mt-4 flex justify-center">

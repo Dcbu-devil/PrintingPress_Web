@@ -13,10 +13,12 @@ import {
 } from 'lucide-react';
 
 import api from '../api/api';
+import { useAuth } from '../context/AuthContext';
 
 const Agents = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [agents, setAgents] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [editingAgent, setEditingAgent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -43,16 +45,7 @@ const Agents = () => {
     refreshAll();
   }, []);
 
-  const filteredAgents = agents.filter((agent) => {
-    const search = searchTerm.toLowerCase();
-
-    return (
-      agent.name?.toLowerCase().includes(search) ||
-      agent.email?.toLowerCase().includes(search) ||
-      agent.code?.toLowerCase().includes(search) ||
-      agent.phone?.toLowerCase().includes(search)
-    );
-  });
+  const filteredAgents = agents;
 
   const getParentName = (parentId) => {
     if (!parentId) return 'No Parent';
@@ -65,21 +58,8 @@ const Agents = () => {
   };
 
   const getTotalPayment = (agent) => {
-    return Number(
-      agent.total_payment ??
-        agent.total_commission ??
-        agent.paid_amount ??
-        0
-    );
-  };
-
-  const getPendingPayment = (agent) => {
-    return Number(
-      agent.total_pending_payment ??
-        agent.pending_payment ??
-        agent.unpaid_amount ??
-        0
-    );
+    // AgentResponse returns total_commission as the cumulative commission earned.
+    return Number(agent.total_commission ?? 0);
   };
 
   const totalPayment = agents.reduce(
@@ -608,12 +588,12 @@ const Agents = () => {
             </div>
 
             <div>
-              <p className="text-sm text-gray-500">Total Payment</p>
+              <p className="text-sm text-gray-500">Total Commission Earned</p>
               <p className="font-semibold text-green-600">
                 ₹{getTotalPayment(agent).toLocaleString()}
               </p>
-              <p className="text-xs text-red-500">
-                Pending: ₹{getPendingPayment(agent).toLocaleString()}
+              <p className="text-xs text-gray-400">
+                See Payments page for paid/pending details.
               </p>
             </div>
 
@@ -676,20 +656,7 @@ const Agents = () => {
           </div>
         </div>
 
-        {/* SEARCH BAR HIDDEN */}
-        <div className="hidden bg-white rounded-xl shadow-sm p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
 
-            <input
-              type="text"
-              placeholder="Search members..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border rounded-lg"
-            />
-          </div>
-        </div>
 
         {/* STATS */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -737,28 +704,25 @@ const Agents = () => {
                   <th className="text-left p-4">Member name</th>
                   <th className="text-left p-4">Total orders</th>
                   <th className="text-left p-4">
-                    Total payment
-                    <span className="block text-xs font-normal text-gray-500">
-                      Total pendingpayment
-                    </span>
+                    Commission Earned
                   </th>
                   <th className="text-left p-4">Connected members</th>
                   <th className="text-left p-4">Action</th>
                   <th className="text-left p-4">Edit</th>
-                  <th className="text-left p-4">Delete</th>
+                  {isSuperAdmin && <th className="text-left p-4">Delete</th>}
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="8" className="text-center py-8 text-gray-500">
+                    <td colSpan={isSuperAdmin ? 8 : 7} className="text-center py-8 text-gray-500">
                       Loading members...
                     </td>
                   </tr>
                 ) : filteredAgents.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="text-center py-8 text-gray-500">
+                    <td colSpan={isSuperAdmin ? 8 : 7} className="text-center py-8 text-gray-500">
                       No members found. Click Add Member to create one.
                     </td>
                   </tr>
@@ -791,11 +755,10 @@ const Agents = () => {
 
                       <td className="p-4">
                         <p className="font-semibold text-green-600">
-                          ₹{getTotalPayment(agent).toLocaleString()}
+                          ₹{Number(agent.total_commission || 0).toLocaleString()}
                         </p>
-
-                        <p className="text-xs text-red-500">
-                          Pending: ₹{getPendingPayment(agent).toLocaleString()}
+                        <p className="text-xs text-gray-400">
+                          Commission earned
                         </p>
                       </td>
 
@@ -823,15 +786,17 @@ const Agents = () => {
                         </button>
                       </td>
 
-                      <td className="p-4">
-                        <button
-                          onClick={() => handleDeleteMember(agent)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Delete
-                        </button>
-                      </td>
+                      {isSuperAdmin && (
+                        <td className="p-4">
+                          <button
+                            onClick={() => handleDeleteMember(agent)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
