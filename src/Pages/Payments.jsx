@@ -13,11 +13,13 @@ import {
 } from 'lucide-react';
 
 import api from '../api/api';
+import { useAuth } from '../context/AuthContext';
 
 const Payments = () => {
+  const { user } = useAuth();
+  const isAgent = user?.role === 'agent';
   const [payments, setPayments] = useState([]);
   const [paymentInputs, setPaymentInputs] = useState({});
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
 
@@ -29,7 +31,7 @@ const Payments = () => {
     try {
       setLoading(true);
 
-      const response = await api.get('/payments/');
+      const response = await api.get(isAgent ? '/payments/my' : '/payments/');
 
       const paymentData = Array.isArray(response.data) ? response.data : [];
 
@@ -215,20 +217,10 @@ const Payments = () => {
   };
 
   // =========================
-  // FILTER PAYMENTS
+  // FILTER PAYMENTS (Search removed)
   // =========================
 
-  const filteredPayments = payments.filter((payment) => {
-    const searchValue = searchTerm.toLowerCase();
-
-    return (
-      payment.payment_id?.toLowerCase().includes(searchValue) ||
-      payment.order_id?.toLowerCase().includes(searchValue) ||
-      payment.agent_name?.toLowerCase().includes(searchValue) ||
-      payment.agent_role?.toLowerCase().includes(searchValue) ||
-      payment.payment_status?.toLowerCase().includes(searchValue)
-    );
-  });
+  const filteredPayments = payments;
 
   // =========================
   // SUMMARY VALUES
@@ -285,14 +277,6 @@ const Payments = () => {
               Refresh
             </button>
 
-            <button
-              type="button"
-              onClick={() => alert('Export feature can be added later')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-            >
-              <Download className="w-5 h-5" />
-              Export Report
-            </button>
           </div>
         </div>
 
@@ -344,24 +328,6 @@ const Payments = () => {
             <p className="text-sm font-semibold text-yellow-600">
               Pending: {pendingPayments}
             </p>
-          </div>
-        </div>
-
-        {/* SEARCH */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <div className="relative">
-            <Search
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search payment ID, job ID, member name, role, status..."
-              className="w-full border border-gray-300 rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-            />
           </div>
         </div>
 
@@ -564,25 +530,27 @@ const Payments = () => {
                         </td>
 
                         <td className="px-6 py-4">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSavePayment(payment)}
-                              disabled={isUpdating}
-                              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
-                            >
-                              <Save className="w-4 h-4" />
-                              {isUpdating ? 'Saving...' : 'PAY'}
-                            </button>
+                          {!isAgent && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleSavePayment(payment)}
+                                disabled={isUpdating}
+                                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                              >
+                                <Save className="w-4 h-4" />
+                                {isUpdating ? 'Saving...' : 'PAY'}
+                              </button>
 
-                            <button
-                              onClick={() => handleRevertPayment(payment)}
-                              disabled={isUpdating || paidAmount <= 0}
-                              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                              Revert
-                            </button>
-                          </div>
+                              <button
+                                onClick={() => handleRevertPayment(payment)}
+                                disabled={isUpdating || paidAmount <= 0}
+                                className="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                                Revert
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

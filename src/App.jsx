@@ -1,68 +1,198 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
 
-// Auth Pages
+/*
+  ============================================================
+  AUTH PAGES
+  ============================================================
+*/
+
 import Login from './Pages/auth/Login';
 import Register from './Pages/auth/Register';
+import ResetPassword from './Pages/auth/ResetPassword';
 
-// Dashboard Pages
+/*
+  ============================================================
+  DASHBOARD PAGES
+  ============================================================
+*/
+
 import SuperAdminDashboard from './Pages/Dashboards/SuperAdminDashboard';
 import AdminDashboard from './Pages/Dashboards/AdminDashboard';
 import AgentDashboard from './Pages/Dashboards/AgentDashboard';
 
-// Feature Pages
+/*
+  ============================================================
+  FEATURE PAGES
+  ============================================================
+*/
+
 import Customers from './Pages/Customers';
 import Orders from './Pages/Orders';
 import Agents from './Pages/Agents';
 import Payments from './Pages/Payments';
-import Production from './Pages/Production';
-import Reports from './Pages/Reports';
-import Settings from './Pages/Settings';
 import AddOrder from './Pages/AddOrder';
-import Network from './Pages/Network';  
-// Context
+import Network from './Pages/Network';
+import AddMember from './Pages/AddMember';
+
+/*
+  ============================================================
+  OPTIONAL / FUTURE PAGES
+  ============================================================
+*/
+
+// import Production from './Pages/Production';
+// import Reports from './Pages/Reports';
+// import Settings from './Pages/Settings';
+
+/*
+  ============================================================
+  AUTH CONTEXT
+  ============================================================
+*/
+
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-// Protected Route Component
+/*
+  ============================================================
+  HELPER: GET ROLE SAFELY
+  ============================================================
+*/
+
+const getUserRole = (user) => {
+  return user?.role_name || user?.role?.name || user?.role || null;
+};
+
+/*
+  ============================================================
+  PROTECTED ROUTE COMPONENT
+  ============================================================
+*/
+
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    return <Navigate to="/unauthorized" replace />;
+  /*
+    First-time login rule:
+    If backend says must_reset_password = true,
+    user must go to reset password page.
+  */
+
+  if (user?.must_reset_password) {
+    return <Navigate to="/reset-password" replace />;
+  }
+
+  const role = getUserRole(user);
+
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
 };
 
-// Dashboard Router based on role
-const DashboardRouter = () => {
-  const { user } = useAuth();
+/*
+  ============================================================
+  RESET PASSWORD PROTECTED ROUTE
+  ============================================================
+  User must be logged in to reset password.
+*/
 
-  if (user?.role === 'super_admin') {
-    return <SuperAdminDashboard />;
-  } else if (user?.role === 'admin') {
-    return <AdminDashboard />;
-  } else if (user?.role === 'agent') {
-    return <AgentDashboard />;
+const ResetPasswordRoute = ({ children }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  /*
+    If password already reset, do not show reset page again.
+    Send user to correct dashboard.
+  */
+
+  if (!user?.must_reset_password) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
+
+/*
+  ============================================================
+  DASHBOARD ROUTER
+  ============================================================
+*/
+
+const DashboardRouter = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  const role = getUserRole(user);
+
+  if (role === 'super_admin') {
+    return <Navigate to="/super-admin/dashboard" replace />;
+  }
+
+  if (role === 'admin') {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (role === 'agent') {
+    return <Navigate to="/agent/dashboard" replace />;
   }
 
   return <Navigate to="/login" replace />;
 };
+
+/*
+  ============================================================
+  MAIN APP ROUTING
+  ============================================================
+*/
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public Routes */}
+          {/* ================================================= */}
+          {/* PUBLIC ROUTES */}
+          {/* ================================================= */}
+
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
+          {/* ================================================= */}
+          {/* RESET PASSWORD ROUTE */}
+          {/* ================================================= */}
+
+          <Route
+            path="/reset-password"
+            element={
+              <ResetPasswordRoute>
+                <ResetPassword />
+              </ResetPasswordRoute>
+            }
+          />
+
+          {/* ================================================= */}
+          {/* DEFAULT DASHBOARD ROUTES */}
+          {/* ================================================= */}
+
           <Route
             path="/"
             element={
@@ -81,9 +211,21 @@ function App() {
             }
           />
 
-          {/* Super Admin Only Routes */}
+          {/* ================================================= */}
+          {/* SUPER ADMIN PORTAL ROUTES */}
+          {/* ================================================= */}
+
           <Route
-            path="/super-admin/*"
+            path="/super-admin"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin']}>
+                <Navigate to="/super-admin/dashboard" replace />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/super-admin/dashboard"
             element={
               <ProtectedRoute allowedRoles={['super_admin']}>
                 <SuperAdminDashboard />
@@ -91,27 +233,54 @@ function App() {
             }
           />
 
-          {/* Admin Routes */}
+          {/* ================================================= */}
+          {/* ADMIN PORTAL ROUTES */}
+          {/* ================================================= */}
+
           <Route
-            path="/admin/*"
+            path="/admin"
             element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+              <ProtectedRoute allowedRoles={['admin']}>
+                <Navigate to="/admin/dashboard" replace />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin','admin']}>
                 <AdminDashboard />
               </ProtectedRoute>
             }
           />
 
-          {/* Agent Routes */}
+          {/* ================================================= */}
+          {/* AGENT / MEMBER PORTAL ROUTES */}
+          {/* ================================================= */}
+
           <Route
-            path="/agent/*"
+            path="/agent"
             element={
               <ProtectedRoute allowedRoles={['agent']}>
+                <Navigate to="/agent/dashboard" replace />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/agent/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin','agent']}>
                 <AgentDashboard />
               </ProtectedRoute>
             }
           />
 
-          {/* Common Protected Routes */}
+          {/* ================================================= */}
+          {/* CUSTOMERS PAGE */}
+          {/* ================================================= */}
+
           <Route
             path="/customers"
             element={
@@ -121,23 +290,9 @@ function App() {
             }
           />
 
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <Orders />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/add-order"
-            element={
-              <ProtectedRoute>
-                <AddOrder />
-              </ProtectedRoute>
-            }
-          />
+          {/* ================================================= */}
+          {/* MEMBERS / AGENTS PAGE */}
+          {/* ================================================= */}
 
           <Route
             path="/agents"
@@ -148,53 +303,111 @@ function App() {
             }
           />
 
+          {/* ================================================= */}
+          {/* NETWORK PAGE */}
+          {/* ================================================= */}
+
           <Route
             path="/network"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <Network />
               </ProtectedRoute>
             }
           />
 
+          {/* ================================================= */}
+          {/* ORDERS / JOBS PAGE */}
+          {/* ================================================= */}
+
           <Route
-            path="/payments"
+            path="/orders"
             element={
-              <ProtectedRoute>
-                <Payments />
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'agent']}>
+                <Orders />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ================================================= */}
+          {/* ADD JOB PAGE */}
+          {/* ================================================= */}
+
+          <Route
+            path="/add-order"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'agent']}>
+                <AddOrder />
               </ProtectedRoute>
             }
           />
 
           <Route
+            path="/add-member"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'agent']}>
+                <AddMember />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ================================================= */}
+          {/* PAYMENTS / COMMISSIONS PAGE */}
+          {/* ================================================= */}
+
+          <Route
+            path="/payments"
+            element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin','agent']}>
+                <Payments />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ================================================= */}
+          {/* PRODUCTION PAGE */}
+          {/* ================================================= */}
+
+          {/* <Route
             path="/production"
             element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <Production />
               </ProtectedRoute>
             }
-          />
+          /> */}
 
-          <Route
+          {/* ================================================= */}
+          {/* REPORTS PAGE */}
+          {/* ================================================= */}
+
+          {/* <Route
             path="/reports"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <Reports />
               </ProtectedRoute>
             }
-          />
+          /> */}
 
-          <Route
+          {/* ================================================= */}
+          {/* SETTINGS PAGE */}
+          {/* ================================================= */}
+
+          {/* <Route
             path="/settings"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['super_admin']}>
                 <Settings />
               </ProtectedRoute>
             }
-          />
+          /> */}
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* ================================================= */}
+          {/* CATCH ALL ROUTE */}
+          {/* ================================================= */}
+
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
