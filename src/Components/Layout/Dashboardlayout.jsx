@@ -154,7 +154,7 @@ const DashboardLayout = ({ children, title }) => {
         roles: ['super_admin', 'admin', 'agent'],
       },
       {
-        name: 'Add Member',
+        name: 'My Member',
         icon: UserCheck,
         path: '/add-member',
         roles: ['agent'],
@@ -521,21 +521,15 @@ const DashboardLayout = ({ children, title }) => {
                             </div>
                           ) : (
                             notifications.map((notif) => (
-                              <button
+                              <div
                                 key={notif.id}
-                                onClick={async () => {
-                                  try {
-                                    await api.put(`/notifications/${notif.id}/read`);
-                                    setNotificationsDropdown(false);
-                                    fetchNotifications();
-                                    if (notif.order_id) {
-                                      navigate(`/orders?openCosting=${notif.order_id}`);
-                                    }
-                                  } catch (error) {
-                                    console.error('Failed to mark notification as read:', error);
+                                onClick={() => {
+                                  setNotificationsDropdown(false);
+                                  if (notif.order_id) {
+                                    navigate(`/orders?openCosting=${notif.order_id}`);
                                   }
                                 }}
-                                className="w-full text-left p-4 hover:bg-blue-50/50 transition flex flex-col gap-1"
+                                className="w-full text-left p-4 hover:bg-blue-50/50 transition flex flex-col gap-1 cursor-pointer relative group"
                               >
                                 <div className="flex justify-between items-start">
                                   <span className="font-semibold text-gray-900 text-sm">
@@ -548,12 +542,31 @@ const DashboardLayout = ({ children, title }) => {
                                 <p className="text-xs text-gray-600 line-clamp-2">
                                   {notif.message}
                                 </p>
-                                {notif.order_id && (
-                                  <span className="text-[10px] text-blue-600 font-bold mt-1 inline-flex items-center gap-1 hover:underline">
-                                    Enter Costing →
-                                  </span>
-                                )}
-                              </button>
+                                <div className="flex justify-between items-center mt-2">
+                                  {notif.order_id ? (
+                                    <span className="text-[10px] text-blue-600 font-bold inline-flex items-center gap-1 hover:underline">
+                                      Enter Costing →
+                                    </span>
+                                  ) : (
+                                    <span></span>
+                                  )}
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        await api.put(`/notifications/${notif.id}/read`);
+                                        fetchNotifications();
+                                      } catch (error) {
+                                        console.error('Failed to mark notification as read:', error);
+                                      }
+                                    }}
+                                    className="text-[11px] text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-800 font-bold px-2 py-1 rounded transition duration-200 border border-red-200"
+                                    title="Clear Notification"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                              </div>
                             ))
                           )}
                         </div>

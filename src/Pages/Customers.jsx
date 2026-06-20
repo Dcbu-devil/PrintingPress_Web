@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import DashboardLayout from '../components/Layout/DashboardLayout';
+import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import { Plus, Edit, Trash2, Mail, Phone, Building, MapPin, MoreVertical } from 'lucide-react';
 import api from '../api/api';
 

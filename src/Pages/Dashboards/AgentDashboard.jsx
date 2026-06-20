@@ -130,40 +130,6 @@ const AgentDashboard = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-            <div className="bg-blue-500 p-4 rounded-xl inline-block mb-4">
-              <ShoppingCart className="text-white w-7 h-7" />
-            </div>
-
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">
-              My Jobs
-            </h3>
-
-            <div className="space-y-2 text-sm text-gray-600 font-medium">
-              <p>Total Jobs : {totalJobs}</p>
-              <p>Pending Jobs : {pendingJobs}</p>
-              <p>Running Jobs : {runningJobs}</p>
-              <p>Completed Jobs : {completedJobs}</p>
-              <p className="pt-2 border-t text-blue-600 font-bold">Total Value : ₹{totalJobsValue.toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-            <div className="bg-yellow-500 p-4 rounded-xl inline-block mb-4">
-              <Wallet className="text-white w-7 h-7" />
-            </div>
-
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">
-              My Commission
-            </h3>
-
-            <div className="space-y-2 text-sm text-gray-600 font-medium">
-              <p>Total Commission : ₹{totalCommission.toLocaleString()}</p>
-              <p>Paid Commission : ₹{paidCommission.toLocaleString()}</p>
-              <p>Pending Commission : ₹{pendingCommission.toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
             <div className="bg-green-500 p-4 rounded-xl inline-block mb-4">
               <User className="text-white w-7 h-7" />
             </div>
@@ -180,7 +146,49 @@ const AgentDashboard = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 flex flex-col h-[280px]">
+          <div
+            onClick={() => navigate('/payments')}
+            className="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition duration-300 cursor-pointer border border-gray-100"
+          >
+            <div className="bg-yellow-500 p-4 rounded-xl inline-block mb-4">
+              <Wallet className="text-white w-7 h-7" />
+            </div>
+
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">
+              My Commission
+            </h3>
+
+            <div className="space-y-2 text-sm text-gray-600 font-medium">
+              <p>Total Commission : ₹{totalCommission.toLocaleString()}</p>
+              <p>Paid Commission : ₹{paidCommission.toLocaleString()}</p>
+              <p>Pending Commission : ₹{pendingCommission.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div
+            onClick={() => navigate('/orders')}
+            className="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition duration-300 cursor-pointer border border-gray-100"
+          >
+            <div className="bg-blue-500 p-4 rounded-xl inline-block mb-4">
+              <ShoppingCart className="text-white w-7 h-7" />
+            </div>
+
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">
+              My Jobs
+            </h3>
+
+            <div className="space-y-2 text-sm text-gray-600 font-medium">
+              <p>Total Jobs : {totalJobs}</p>
+              <p>Pending Jobs : {pendingJobs}</p>
+              <p>Running Jobs : {runningJobs}</p>
+              <p>Completed Jobs : {completedJobs}</p>
+            </div>
+          </div>
+
+          <div
+            onClick={() => navigate('/add-member')}
+            className="bg-white rounded-xl shadow-md p-6 hover:shadow-xl transition duration-300 cursor-pointer border border-gray-100 flex flex-col h-[280px]"
+          >
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
                 <div className="bg-purple-500 p-3 rounded-xl">
@@ -190,26 +198,20 @@ const AgentDashboard = () => {
                   My Members
                 </h3>
               </div>
-              <button
-                onClick={() => navigate('/add-member')}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-              >
-                + Add Subagent
-              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {subagents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-gray-500">
                   <p className="text-sm">No subagents added yet.</p>
-                  <p className="text-xs text-gray-400 mt-1">Add subagents to build your network.</p>
+                  <p className="text-xs text-gray-400 mt-1">Click here to add subagents and build your network.</p>
                 </div>
               ) : (
                 subagents.map((sub) => (
-                  <div key={sub.id} className="flex justify-between items-center p-3 border rounded-xl hover:bg-gray-50 transition">
+                  <div key={sub.id} className="flex justify-between items-center p-3 border rounded-xl hover:bg-gray-100 transition">
                     <div>
-                      <p className="font-semibold text-gray-900 text-sm">{sub.name}</p>
-                      <p className="text-xs text-gray-500">{sub.code} • {sub.email}</p>
+                      <p className="font-semibold text-gray-900 text-sm">{sub.code}</p>
+                      <p className="text-xs text-gray-500">{sub.email}</p>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${sub.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                       {sub.status}

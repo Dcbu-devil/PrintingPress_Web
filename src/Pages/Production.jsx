@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import DashboardLayout from '../components/Layout/DashboardLayout';
+import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import { Clock, CheckCircle, AlertCircle, Package, TrendingUp } from 'lucide-react';
 
 const Production = () => {

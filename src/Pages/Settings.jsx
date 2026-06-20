@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import DashboardLayout from '../components/Layout/DashboardLayout';
+import DashboardLayout from '../Components/Layout/Dashboardlayout';
 import { useAuth } from '../context/AuthContext';
 import { User, Bell, Lock, Palette, Settings as SettingsIcon, Save } from 'lucide-react';
 
